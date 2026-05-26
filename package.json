@@ -1,0 +1,58 @@
+{
+  "name": "test-cpq-l1-l2",
+  "private": true,
+  "version": "1.14.0",
+  "description": "Salesforce Org Dependent Unlocked Package for Test CPQ L1 L2 Metadata",
+  "scripts": {
+    "formatting": "prettier --check \"**/*.{cls,cmp,component,css,html,js,json,md,page,trigger,xml,yaml,yml}\"",
+    "formatting:fix": "prettier --write \"**/*.{cls,cmp,component,css,html,js,json,md,page,trigger,xml,yaml,yml}\"",
+    "generate:docs": "rm -Rf docs/generated-docs && apexdocs markdown ",
+    "lint:apex": "sf code-analyzer run --output-file sfca_results.json --severity-threshold 3 --config-file ./code-analyzer.yml --rule-selector pmd:OpinionatedSalesforce",
+    "lint:js": "eslint **/{aura,lwc}/**/*.js",
+    "lint:flow": "sf flow scan -d force-app/main/default/flows --failon warning",
+    "test:js": "npm run test:unit",
+    "test:apex": "node scripts/run-tests.cjs",
+    "test:apex:org": "node scripts/run-org-tests.cjs",
+    "test:unit": "sfdx-lwc-jest",
+    "test:unit:watch": "sfdx-lwc-jest --watch",
+    "test:unit:debug": "sfdx-lwc-jest --debug",
+    "test:unit:coverage": "sfdx-lwc-jest --coverage"
+  },
+  "devDependencies": {
+    "@lwc/eslint-plugin-lwc": "^3.4.0",
+    "@prettier/plugin-xml": "^3.4.1",
+    "@salesforce/eslint-config-lwc": "^4.0.0",
+    "@salesforce/eslint-plugin-aura": "^3.0.0",
+    "@salesforce/eslint-plugin-lightning": "^2.0.0",
+    "@salesforce/sfdx-lwc-jest": "^7.0.2",
+    "eslint": "^9.35.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-jest": "^28.14.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.6",
+    "prettier": "^3.8.3",
+    "prettier-plugin-apex": "^2.2.6"
+  },
+  "lint-staged": {
+    "**/*.{cls,cmp,component,css,html,js,json,md,page,trigger,xml,yaml,yml}": [
+      "prettier --write"
+    ],
+    "**/{aura,lwc}/**/*.js": [
+      "eslint"
+    ],
+    "**/lwc/**": [
+      "sfdx-lwc-jest -- --bail --findRelatedTests --passWithNoTests"
+    ]
+  },
+  "dependencies": {
+    "@cparra/apexdocs": "^3.20.1"
+  },
+  "overrides": {
+    "jws": "3.2.3",
+    "@tootallnate/once": "3.0.1"
+  },
+  "volta": {
+    "node": "22.15.0",
+    "yarn": "4.9.2"
+  }
+}

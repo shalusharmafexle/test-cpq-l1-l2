@@ -1,0 +1,64 @@
+name: Validate PR Lint Check
+on: [pull_request]
+
+jobs:
+  pr-lint-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate Branch Name
+        id: branch-check
+        run: |
+          BRANCH_NAME="${{ github.head_ref }}"
+          BASE_BRANCH="${{ github.base_ref }}"
+          echo "Branch name: $BRANCH_NAME"
+          echo "Base branch: $BASE_BRANCH"
+
+          if [[ "$BRANCH_NAME" == "Main" || "$BRANCH_NAME" =~ ^cherry-pick ]]; then
+            echo "Skipping lint check for branch '$BRANCH_NAME'"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          elif [[ "$BASE_BRANCH" == "PhaseI" || "$BASE_BRANCH" == "PhaseII" ]]; then
+            if [[ "$BRANCH_NAME" =~ ^CR-[0-9]+ ]]; then
+              echo "Branch name '$BRANCH_NAME' is valid"
+              echo "skip=false" >> $GITHUB_OUTPUT
+            else
+              echo "Error: Branch name must start with CR number (e.g. CR-20240603-18533)"
+              exit 1
+            fi
+          else
+            echo "Skipping CR validation for branch '$BRANCH_NAME' targeting '$BASE_BRANCH'"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate PR Title and Metadata
+        if: steps.branch-check.outputs.skip != 'true'
+        run: |
+          BRANCH_NAME="${{ github.head_ref }}"
+          BASE_BRANCH="${{ github.base_ref }}"
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          PR_BODY="${{ github.event.pull_request.body }}"
+          PR_REVIEWERS_COUNT=$(echo '${{ toJson(github.event.pull_request.requested_reviewers) }}' | jq length)
+          PR_ASSIGNEES_COUNT=$(echo '${{ toJson(github.event.pull_request.assignees) }}' | jq length)
+          PR_LABELS_COUNT=$(echo '${{ toJson(github.event.pull_request.labels) }}' | jq length)
+
+          echo "PR Title: $PR_TITLE"
+          echo "PR Body: $PR_BODY"
+
+          if [[ "$BASE_BRANCH" == "PhaseI" || "$BASE_BRANCH" == "PhaseII" ]]; then
+            if [[ "$PR_TITLE" =~ ^CR-[0-9]+ ]]; then
+              echo "PR title '$PR_TITLE' is valid"
+            else
+              echo "Error: PR title must start with CR number (e.g. $BRANCH_NAME)"
+              exit 1
+            fi
+          else
+            echo "Skipping CR title validation for PR targeting '$BASE_BRANCH'"
+          fi
+
+          if [[ -z "$PR_BODY" || "$PR_REVIEWERS_COUNT" -eq 0 || "$PR_ASSIGNEES_COUNT" -eq 0 || "$PR_LABELS_COUNT" -eq 0 ]]; then
+            echo "Error: PR description, reviewer, assignee, and label are required."
+            exit 1
+          fi
+
+          echo "PR validation successful."
