@@ -21,11 +21,12 @@ public with sharing class AccountController {
   }
 
   @AuraEnabled(cacheable=true)
-public static Account getAccountById(Id accountId) {
-    return [SELECT Id, Name, AccountNumber, Type, Rating, Phone, Website, AnnualRevenue, Fax 
-            FROM Account 
-            WHERE Id = :accountId 
-            LIMIT 1];
-}
-
+  public static Account getAccountById(Id accountId) {
+    return [
+      SELECT Id, Name, AccountNumber, Type, Rating, Phone, Website, AnnualRevenue, Fax
+      FROM Account
+      WHERE Id = :accountId
+      LIMIT 1
+    ];
+  }
 }
