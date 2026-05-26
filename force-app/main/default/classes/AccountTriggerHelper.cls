@@ -26,10 +26,8 @@ public class AccountTriggerHelper {
           mapOfAccount.get(acc.Id).addAll(acc.Details__c.split(','));
         }
       }
-      System.debug('mapOfAccount--->' + mapOfAccount);
       if (mapOfAccount.size() > 0) {
         for (String key : mapOfAccount.keySet()) {
-          System.debug('key--->' + key);
         }
       }
     }
