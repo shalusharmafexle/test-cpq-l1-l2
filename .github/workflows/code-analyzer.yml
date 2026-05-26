@@ -1,6 +1,10 @@
 name: Validate Code Analyzer
 
-on: [pull_request]
+on:
+  pull_request:
+    branches:
+      - Full1
+      - Full2
 jobs:
   code-analyzer-check:
     runs-on: ubuntu-latest

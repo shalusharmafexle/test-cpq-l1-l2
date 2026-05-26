@@ -1,5 +1,9 @@
 name: Validate LWC Unit Tests
-on: [pull_request]
+on:
+  pull_request:
+    branches:
+      - Full1
+      - Full2
 
 jobs:
   lwc-tests:

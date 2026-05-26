@@ -1,6 +1,10 @@
 name: Validate Code Format Check
 
-on: [pull_request]
+on:
+  pull_request:
+    branches:
+      - Full1
+      - Full2
 
 jobs:
   format-check:

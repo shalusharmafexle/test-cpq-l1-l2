@@ -1,5 +1,9 @@
 name: Validate PR Lint Check
-on: [pull_request]
+on:
+  pull_request:
+    branches:
+      - Full1
+      - Full2
 
 jobs:
   pr-lint-check:
@@ -18,7 +22,7 @@ jobs:
             echo "Skipping lint check for branch '$BRANCH_NAME'"
             echo "skip=true" >> $GITHUB_OUTPUT
             exit 0
-          elif [[ "$BASE_BRANCH" == "PhaseI" || "$BASE_BRANCH" == "PhaseII" ]]; then
+          elif [[ "$BASE_BRANCH" == "Full1" || "$BASE_BRANCH" == "Full2" ]]; then
             if [[ "$BRANCH_NAME" =~ ^CR-[0-9]+ ]]; then
               echo "Branch name '$BRANCH_NAME' is valid"
               echo "skip=false" >> $GITHUB_OUTPUT
@@ -45,7 +49,7 @@ jobs:
           echo "PR Title: $PR_TITLE"
           echo "PR Body: $PR_BODY"
 
-          if [[ "$BASE_BRANCH" == "PhaseI" || "$BASE_BRANCH" == "PhaseII" ]]; then
+          if [[ "$BASE_BRANCH" == "Full1" || "$BASE_BRANCH" == "Full2" ]]; then
             if [[ "$PR_TITLE" =~ ^CR-[0-9]+ ]]; then
               echo "PR title '$PR_TITLE' is valid"
             else

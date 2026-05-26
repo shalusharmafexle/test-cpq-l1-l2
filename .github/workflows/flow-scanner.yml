@@ -1,6 +1,10 @@
 name: Validate Flow Quality Scan
 
-on: [pull_request]
+on:
+  pull_request:
+    branches:
+      - Full1
+      - Full2
 
 jobs:
   flow-scanner-check:
