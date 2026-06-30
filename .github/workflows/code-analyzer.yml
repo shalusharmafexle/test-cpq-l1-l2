@@ -46,6 +46,7 @@ jobs:
         run: |
           python3 <<'EOF'
           import json, re, sys
+
           # Load analyzer results
           with open("results.json") as f:
               data = json.load(f)
@@ -63,9 +64,11 @@ jobs:
           changed_lines = set(l for r in hunks for l in r)
 
           violations_in_changed = []
-          for v in data.get("violations", []):
-              if v.get("line") in changed_lines:
-                  violations_in_changed.append(v)
+          # Iterate through each result object
+          for result in data:
+              for v in result.get("violations", []):
+                  if v.get("line") in changed_lines:
+                      violations_in_changed.append(v)
 
           if violations_in_changed:
               print("Violations in changed lines:", violations_in_changed)
