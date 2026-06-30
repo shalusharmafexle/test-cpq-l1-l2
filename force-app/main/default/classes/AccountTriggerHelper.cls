@@ -15,6 +15,7 @@ public class AccountTriggerHelper {
    * Parameter 	: List<Account> newListAccount,Map<Id,List<String>> oldMapAccounts
    * Description 	:
    **/
+  String x = 'some string';
   public static void insertChildRecord(List<Account> newListAccount, Map<Id, Account> oldMapAccounts) {
     Map<Id, List<String>> mapOfAccount = new Map<Id, list<String>>();
     if (newListAccount.size() > 0) {
