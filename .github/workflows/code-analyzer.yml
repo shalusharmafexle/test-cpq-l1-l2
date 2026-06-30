@@ -31,12 +31,12 @@ jobs:
 
       # Fetch base branch to compare changes
       - name: Fetch base branch
-        run: git fetch origin main
+        run: git fetch origin Full2
 
       # Identify changed Apex classes between PR branch and base branch
       - name: Get changed Apex classes
         run: |
-          git diff --name-only origin/main...HEAD | grep "classes/.*\.cls" > changed_classes.txt || true
+          git diff --name-only origin/Full2...HEAD | grep "classes/.*\.cls" > changed_classes.txt || true
 
       # Run analyzer only on changed files
       - name: Run Salesforce Code Analyzer
