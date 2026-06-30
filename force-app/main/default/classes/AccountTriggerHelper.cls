@@ -74,6 +74,7 @@ public class AccountTriggerHelper {
                 new List<String>(mapOfAccountsIdWithContactNames.get(accId)),
                 '\n'
               );
+              System.debug('Come here');
             }
           }
         }
