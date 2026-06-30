@@ -9,44 +9,29 @@ on:
 jobs:
   code-analyzer-check:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
+      - name: Check out files
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-
-      - name: Fetch base branch
-        run: |
-          git fetch origin ${{ github.event.pull_request.base.ref }}
+          fetch-depth: 0 # Required to fetch all branches and commits
 
       - name: Install Salesforce CLI
         run: npm install -g @salesforce/cli@latest
 
-      - name: Install Code Analyzer plugin
-        run: echo "y" | sf plugins install @salesforce/sfdx-scanner@latest
+      - name: Install Salesforce Code Analyzer Plugin
+        run: echo 'y' | sf plugins install @salesforce/sfdx-scanner@latest
 
-      - name: Get changed Apex files
-        run: |
-          FILES=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD \
-            | grep -E '\.(cls|trigger)$' \
-            | tr '\n' ',' \
-            | sed 's/,$//')
+      - name: Run Salesforce Code Analyzer (delta mode)
+        id: run-code-analyzer
+        uses: forcedotcom/run-code-analyzer@v1
+        with:
+          run-command: run
+          run-arguments: --normalize-severity --target "force-app/main/default/classes/" --delta --pmdconfig apex-ruleset.xml --outfile results.html
+          results-artifact-name: salesforce-code-analyzer-results
 
-          echo "CHANGED_FILES=$FILES" >> $GITHUB_ENV
-
-      - name: Run Code Analyzer
-        if: env.CHANGED_FILES != ''
-        run: |
-          sf scanner run \
-            --target "${{ env.CHANGED_FILES }}" \
-            --format json \
-            --outfile results.json \
-            --normalize-severity \
-            --pmdconfig ${{ github.workspace }}/apex-ruleset.xml
-
-      - name: Validate changed-line violations
-        if: env.CHANGED_FILES != ''
-        run: |
-          python .github/scripts/filter_changed_lines.py \
-            "${{ github.event.pull_request.base.ref }}"
+      - name: Check the outputs to determine whether to fail
+        if: |
+          steps.run-code-analyzer.outputs.exit-code > 0 ||
+          steps.run-code-analyzer.outputs.num-sev1-violations > 0 ||
+          steps.run-code-analyzer.outputs.num-violations > 0
+        run: exit 1
