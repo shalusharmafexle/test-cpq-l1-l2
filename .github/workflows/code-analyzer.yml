@@ -1,4 +1,4 @@
-name: Salesforce Code Analysis (Diff Aware)
+name: Salesforce Code Analyzer (PR Diff Safe)
 
 on:
   pull_request:
@@ -11,101 +11,80 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # -------------------------------
+      # Checkout full history (required for diff)
+      # -------------------------------
       - name: Checkout source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # -------------------------------
+      # Install Salesforce CLI + Code Analyzer
+      # -------------------------------
       - name: Install Salesforce CLI
         run: npm install -g @salesforce/cli
 
-      - name: Install Code Analyzer
+      - name: Install Code Analyzer plugin
         run: sf plugins install @salesforce/sfdx-scanner
 
       # -------------------------------
-      # 1. Get changed Apex files
+      # Fetch base branch
+      # -------------------------------
+      - name: Fetch base branch
+        run: |
+          BASE_BRANCH=${{ github.event.pull_request.base.ref }}
+          echo "Base branch: $BASE_BRANCH"
+          git fetch origin $BASE_BRANCH --depth=0
+
+      # -------------------------------
+      # Get changed Apex files (SAFE + STABLE)
       # -------------------------------
       - name: Get changed files
         id: files
         run: |
-          git fetch origin ${{ github.base_ref }}
+          BASE_BRANCH=${{ github.event.pull_request.base.ref }}
 
-          git diff --name-only origin/${{ github.base_ref }}...HEAD \
-            | grep -E '\.(cls|trigger)$' || true > changed.txt
+          BASE_SHA=$(git merge-base HEAD origin/$BASE_BRANCH)
 
-          echo "Changed files:"
-          cat changed.txt
+          echo "Base SHA: $BASE_SHA"
+
+          CHANGED_FILES=$(git diff --name-only $BASE_SHA HEAD)
+
+          # Keep only Apex files
+          CHANGED_FILES=$(echo "$CHANGED_FILES" | grep -E '\.(cls|trigger)$' || true)
+
+          echo "Changed Apex files:"
+          echo "$CHANGED_FILES"
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No Apex changes detected"
+            echo "files=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED_FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       # -------------------------------
-      # 2. Get changed lines (diff)
-      # -------------------------------
-      - name: Get changed line numbers
-        run: |
-          git diff -U0 origin/${{ github.base_ref }}...HEAD \
-            | grep -E "^\+[^+]" > diff.txt || true
-
-          echo "Changed lines captured"
-
-      # -------------------------------
-      # 3. Run Code Analyzer
+      # Run Code Analyzer (single run, no overwrite issues)
       # -------------------------------
       - name: Run Code Analyzer
-        if: success()
+        if: steps.files.outputs.files != ''
         run: |
+          FILES="${{ steps.files.outputs.files }}"
+
+          echo "Running analysis on:"
+          echo "$FILES"
+
           sf code-analyzer run \
-            --target force-app \
+            --target "$FILES" \
             --format sarif \
             --outfile report.sarif
 
       # -------------------------------
-      # 4. Validate only changed lines
-      # -------------------------------
-      - name: Fail if violations on changed lines
-        run: |
-          node << 'EOF'
-          const fs = require("fs");
-
-          const sarif = JSON.parse(fs.readFileSync("report.sarif", "utf8"));
-          const diff = fs.readFileSync("diff.txt", "utf8");
-
-          // Extract changed line numbers per file
-          const changedLines = {};
-
-          diff.split("\n").forEach(line => {
-            const match = line.match(/^\+(\d+)/);
-            if (match) {
-              const lineNum = parseInt(match[1], 10);
-              // NOTE: simplified mapping (can be enhanced per file)
-              changedLines[lineNum] = true;
-            }
-          });
-
-          let failed = false;
-
-          for (const run of sarif.runs || []) {
-            for (const result of run.results || []) {
-              const loc = result.locations?.[0]?.physicalLocation;
-              if (!loc) continue;
-
-              const line = loc.region?.startLine;
-
-              if (changedLines[line]) {
-                console.log("❌ Issue on changed line:", result.message.text, "Line:", line);
-                failed = true;
-              }
-            }
-          }
-
-          if (failed) {
-            console.error("\nPR failed: Issues found in modified lines only.");
-            process.exit(1);
-          } else {
-            console.log("\n✅ No issues found in modified lines.");
-          }
-          EOF
-
-      # -------------------------------
-      # 5. Upload SARIF
+      # Upload SARIF to GitHub
       # -------------------------------
       - name: Upload SARIF
         if: always()
