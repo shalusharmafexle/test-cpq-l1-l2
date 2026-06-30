@@ -5,38 +5,46 @@ on:
     branches:
       - Full1
       - Full2
+
 jobs:
-  code-analyzer-check:
+  code-analyzer:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Check out files
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Required to fetch all branches and commits
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}
 
       - name: Install Salesforce CLI
         run: npm install -g @salesforce/cli@latest
 
-      - name: Install Salesforce Code Analyzer Plugin
-        run: echo 'y' | sf plugins install @salesforce/sfdx-scanner@latest
+      - name: Install Scanner
+        run: echo "y" | sf plugins install @salesforce/sfdx-scanner@latest
 
-      - name: Get changed metadata files
-        id: changed-files
+      - name: Get changed Apex files
         run: |
-          echo "CHANGED_FILES=$(git diff --name-only --diff-filter=d origin/${{ github.event.pull_request.base.ref }} | grep -E '\.(cls|trigger)$' | tr '\n' ',' | sed 's/,$//')" >> $GITHUB_ENV
+          FILES=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD \
+            | grep -E '\.(cls|trigger)$' \
+            | paste -sd "," -)
 
-      - name: Run Salesforce Code Analyzer on changed files only
-        id: run-code-analyzer
+          echo "CHANGED_FILES=$FILES" >> $GITHUB_ENV
+
+      - name: Run Scanner
         if: env.CHANGED_FILES != ''
-        uses: forcedotcom/run-code-analyzer@v1
-        with:
-          run-command: run
-          run-arguments: --normalize-severity --target ${{ env.CHANGED_FILES }} --pmdconfig apex-ruleset.xml --outfile results.html
-          results-artifact-name: salesforce-code-analyzer-results
+        run: |
+          sf scanner run \
+            --target "${{ env.CHANGED_FILES }}" \
+            --format json \
+            --outfile results.json \
+            --normalize-severity \
+            --pmdconfig apex-ruleset.xml
 
-      - name: Check the outputs to determine whether to fail
-        if: |
-          steps.run-code-analyzer.outputs.exit-code > 0 ||
-          steps.run-code-analyzer.outputs.num-sev1-violations > 0 ||
-          steps.run-code-analyzer.outputs.num-violations > 0
-        run: exit 1
+      - name: Validate only changed lines
+        if: env.CHANGED_FILES != ''
+        run: |
+          python .github/scripts/filter_changed_lines.py \
+            "${{ github.event.pull_request.base.ref }}"
