@@ -1,4 +1,4 @@
-name: Salesforce Code Analyzer
+name: Salesforce Incremental Code Analyzer
 
 on:
   pull_request:
@@ -29,8 +29,9 @@ jobs:
       - name: Install Salesforce CLI
         run: npm install -g @salesforce/cli
 
-      - name: Install Code Analyzer
-        run: sf plugins install @salesforce/code-analyzer
+      # ✅ FIXED STEP
+      - name: Install Code Analyzer Plugin
+        run: sf plugins install code-analyzer --force
 
       - name: Generate changed lines
         run: python scripts/get_changed_lines.py
@@ -42,5 +43,5 @@ jobs:
             --output-format json \
             --output-file results.json
 
-      - name: Filter Results
+      - name: Filter Results (only changed lines)
         run: python scripts/filter_results.py
