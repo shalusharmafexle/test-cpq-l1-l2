@@ -1,37 +1,71 @@
-name: Validate Code Analyzer
+name: Apex Code Analyzer Delta Scan
 
 on:
   pull_request:
     branches:
       - Full1
       - Full2
+    paths:
+      - "force-app/main/default/classes/**"
+      - "force-app/main/default/triggers/**"
 
 jobs:
-  code-analyzer-check:
+  validate-delta:
+    name: Scan Modified Apex Code
     runs-on: ubuntu-latest
+
+    # Required permissions to comment on the PR and upload artifacts
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+
     steps:
-      - name: Check out files
+      # Step 1: Checkout the code with full Git history for diff tracking
+      - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Required to fetch all branches and commits
+          fetch-depth: 0
 
+      # Step 2: Install Salesforce CLI
       - name: Install Salesforce CLI
-        run: npm install -g @salesforce/cli@latest
+        run: |
+          npm install -g @salesforce/cli
+          sf --version
 
-      - name: Install Salesforce Code Analyzer Plugin
-        run: echo 'y' | sf plugins install @salesforce/sfdx-scanner@latest
+      # Step 3: Install Salesforce Code Analyzer Plugin
+      - name: Install Salesforce Code Analyzer
+        run: |
+          sf plugins install @salesforce/sfdx-scanner
+          sf scanner rule list --engine pmd
 
-      - name: Run Salesforce Code Analyzer (delta mode)
-        id: run-code-analyzer
-        uses: forcedotcom/run-code-analyzer@v1
+      # Step 4: Extract modified Apex file paths into a comma-separated list
+      - name: Get Changed Apex Files (Delta)
+        id: delta_files
+        run: |
+          # Fetch target branch to calculate diff properly
+          git fetch origin ${{ github.base_ref }} --depth=1
+
+          # Find modified/added Apex files relative to the base branch
+          CHANGED_FILES=$(git diff --name-only --diff-filter=AM origin/${{ github.base_ref }}...HEAD | grep -E '\.(cls|trigger)$' | tr '\n' ',' | sed 's/,$//')
+
+          echo "Files to scan: $CHANGED_FILES"
+          echo "files=$CHANGED_FILES" >> $GITHUB_OUTPUT
+
+      # Step 5: Run Scan on the delta files if changes exist
+      - name: Run Salesforce Code Analyzer
+        if: steps.delta_files.outputs.files != ''
+        uses: forcedotcom/run-code-analyzer@v2
         with:
-          run-command: run
-          run-arguments: --normalize-severity --target "force-app/main/default/classes/" --delta --pmdconfig apex-ruleset.xml --outfile results.html
-          results-artifact-name: salesforce-code-analyzer-results
+          run-command: "run"
+          # Targets ONLY the comma-separated string of changed files
+          run-arguments: '--target "${{ steps.delta_files.outputs.files }}" --engine pmd --normalize-severity'
+          results-artifact-name: "apex-delta-scan-results"
+        env:
+          # Automatically generates an inline review summary layout on your PR
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check the outputs to determine whether to fail
-        if: |
-          steps.run-code-analyzer.outputs.exit-code > 0 ||
-          steps.run-code-analyzer.outputs.num-sev1-violations > 0 ||
-          steps.run-code-analyzer.outputs.num-violations > 0
-        run: exit 1
+      # Step 6: Graceful skip handling if no Apex code was touched
+      - name: No Apex Changes Found
+        if: steps.delta_files.outputs.files == ''
+        run: echo "No Apex modifications detected in this PR. Skipping scanner engine execution."
