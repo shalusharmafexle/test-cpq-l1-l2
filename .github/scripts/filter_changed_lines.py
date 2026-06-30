@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import json
 import subprocess
 import sys
@@ -7,57 +5,71 @@ import os
 
 base_branch = sys.argv[1]
 
+# ----------------------------
+# Get merge base
+# ----------------------------
 merge_base = subprocess.check_output(
     ["git", "merge-base", "HEAD", f"origin/{base_branch}"],
     text=True
 ).strip()
 
+# ----------------------------
+# Get diff (ONLY changed lines)
+# ----------------------------
 diff = subprocess.check_output(
     ["git", "diff", "-U0", merge_base],
     text=True
 )
 
-changed = {}
-
+changed_files = {}
 current_file = None
-current_line = None
+new_line = None
 
+# ----------------------------
+# Parse git diff correctly
+# ----------------------------
 for line in diff.splitlines():
 
+    # File path
     if line.startswith("+++ b/"):
-        current_file = os.path.normpath(line[6:])
-        changed[current_file] = set()
+        current_file = line[6:].strip()
+        current_file = current_file.replace("\\", "/")
+        current_file = current_file.replace("a/", "").replace("b/", "")
 
+        changed_files[current_file] = set()
+
+    # Hunk header
     elif line.startswith("@@"):
+        parts = line.split(" ")
 
-        part = line.split()[2]
+        new_file_part = [p for p in parts if p.startswith("+")][0]
+        new_line = int(new_file_part.split(",")[0][1:])
 
-        if "," in part:
-            start, count = part[1:].split(",")
-            start = int(start)
-            count = int(count)
-        else:
-            start = int(part[1:])
-            count = 1
-
-        current_line = start
-
+    # Added line
     elif line.startswith("+") and not line.startswith("+++"):
+        if current_file:
+            changed_files[current_file].add(new_line)
+        new_line += 1
 
-        changed[current_file].add(current_line)
-        current_line += 1
-
+    # Removed line (ignored for new-line tracking)
     elif line.startswith("-") and not line.startswith("---"):
         pass
 
+    # Context (not present in -U0 usually, but safe)
     else:
+        if new_line is not None:
+            new_line += 1
 
-        if current_line is not None:
-            current_line += 1
+
+# ----------------------------
+# Load scanner output safely
+# ----------------------------
+with open("results.json") as f:
+    data = json.load(f)
 
 
-def collect(obj):
-
+def extract_violations(obj):
+    """Recursively extract violations from any scanner format"""
     violations = []
 
     if isinstance(obj, dict):
@@ -65,75 +77,67 @@ def collect(obj):
         if "violations" in obj:
             violations.extend(obj["violations"])
 
-        for value in obj.values():
-            violations.extend(collect(value))
+        for v in obj.values():
+            violations.extend(extract_violations(v))
 
     elif isinstance(obj, list):
 
         for item in obj:
-            violations.extend(collect(item))
+            violations.extend(extract_violations(item))
 
     return violations
 
 
-with open("results.json") as f:
-    data = json.load(f)
+violations = extract_violations(data)
 
-violations = collect(data)
 
-new_violations = []
+# ----------------------------
+# Normalize file paths
+# ----------------------------
+def normalize(path):
+    return (
+        path.replace("\\", "/")
+        .replace("a/", "")
+        .replace("b/", "")
+        .strip()
+    )
+
+
+# ----------------------------
+# Filter ONLY violations on changed lines
+# ----------------------------
+matched = []
 
 for v in violations:
 
-    file = (
-        v.get("fileName")
-        or v.get("file")
-        or v.get("source")
-    )
+    file = v.get("fileName") or v.get("file") or v.get("path") or ""
+    file = normalize(file)
 
-    if not file:
-        continue
-
-    file = os.path.normpath(file)
-
-    line = (
-        v.get("line")
-        or v.get("beginLine")
-        or v.get("startLine")
-    )
-
-    if line is None:
-        continue
+    line = v.get("line") or v.get("beginLine") or v.get("startLine")
 
     try:
         line = int(line)
     except:
         continue
 
-    if file in changed and line in changed[file]:
-        new_violations.append(v)
+    if file in changed_files and line in changed_files[file]:
+        matched.append(v)
 
-if new_violations:
 
-    print("\n")
-    print("=" * 60)
-    print("New violations found on modified lines")
-    print("=" * 60)
+# ----------------------------
+# Fail build if needed
+# ----------------------------
+if matched:
 
-    for v in new_violations:
+    print("\n❌ Violations on changed lines:\n")
 
+    for v in matched:
         print(
-            f"""
-File      : {v.get('fileName') or v.get('file')}
-Line      : {v.get('line') or v.get('beginLine')}
-Rule      : {v.get('ruleName') or v.get('rule')}
-Severity  : {v.get('severity')}
-Message   : {v.get('message')}
-"""
+            f"{v.get('fileName')}:{v.get('line')} "
+            f"{v.get('ruleName') or v.get('rule')} - "
+            f"{v.get('message')}"
         )
 
-    print("=" * 60)
+    exit(1)
 
-    sys.exit(1)
-
-print("✅ No violations introduced in modified lines.")
+print("✅ No violations on modified lines.")

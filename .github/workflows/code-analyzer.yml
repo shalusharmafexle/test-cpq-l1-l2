@@ -7,11 +7,12 @@ on:
       - Full2
 
 jobs:
-  code-analyzer:
+  code-analyzer-check:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -22,18 +23,19 @@ jobs:
       - name: Install Salesforce CLI
         run: npm install -g @salesforce/cli@latest
 
-      - name: Install Scanner
+      - name: Install Code Analyzer plugin
         run: echo "y" | sf plugins install @salesforce/sfdx-scanner@latest
 
       - name: Get changed Apex files
         run: |
           FILES=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD \
             | grep -E '\.(cls|trigger)$' \
-            | paste -sd "," -)
+            | tr '\n' ',' \
+            | sed 's/,$//')
 
           echo "CHANGED_FILES=$FILES" >> $GITHUB_ENV
 
-      - name: Run Scanner
+      - name: Run Code Analyzer
         if: env.CHANGED_FILES != ''
         run: |
           sf scanner run \
@@ -41,9 +43,9 @@ jobs:
             --format json \
             --outfile results.json \
             --normalize-severity \
-            --pmdconfig apex-ruleset.xml
+            --pmdconfig ${{ github.workspace }}/apex-ruleset.xml
 
-      - name: Validate only changed lines
+      - name: Validate changed-line violations
         if: env.CHANGED_FILES != ''
         run: |
           python .github/scripts/filter_changed_lines.py \
