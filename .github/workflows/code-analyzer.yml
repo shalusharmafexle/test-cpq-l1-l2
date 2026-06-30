@@ -3,7 +3,8 @@ name: Salesforce Code Analyzer
 on:
   pull_request:
     branches:
-      - main
+      - Full1
+      - Full2
 
 jobs:
   analyze:
