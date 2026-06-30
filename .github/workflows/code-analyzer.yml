@@ -1,42 +1,50 @@
-name: Validate Code Analyzer
+name: Salesforce Incremental Code Analyzer
 
 on:
   pull_request:
     branches:
       - Full1
       - Full2
+
 jobs:
-  code-analyzer-check:
+  analyze:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Check out files
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Required to fetch all branches and commits
+          fetch-depth: 0
+
+      - name: Debug workspace (safe remove later)
+        run: ls -R
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
       - name: Install Salesforce CLI
-        run: npm install -g @salesforce/cli@latest
+        run: npm install -g @salesforce/cli
 
-      - name: Install Salesforce Code Analyzer Plugin
-        run: echo 'y' | sf plugins install @salesforce/sfdx-scanner@latest
+      - name: Install Code Analyzer Plugin
+        run: sf plugins install code-analyzer --force
 
-      - name: Get changed metadata files
-        id: changed-files
+      # ✅ FIXED PATH HERE
+      - name: Generate changed lines
+        run: python ./scripts/get_changed_lines.py
+
+      - name: Run Salesforce Code Analyzer
         run: |
-          echo "CHANGED_FILES=$(git diff --name-only --diff-filter=d origin/${{ github.event.pull_request.base.ref }} | grep -E '\.(cls|trigger)$' | tr '\n' ',' | sed 's/,$//')" >> $GITHUB_ENV
+          sf code-analyzer run \
+            --target force-app \
+            --output-format json \
+            --output-file results.json
 
-      - name: Run Salesforce Code Analyzer on changed files only
-        id: run-code-analyzer
-        if: env.CHANGED_FILES != ''
-        uses: forcedotcom/run-code-analyzer@v1
-        with:
-          run-command: run
-          run-arguments: --normalize-severity --target ${{ env.CHANGED_FILES }} --pmdconfig apex-ruleset.xml --outfile results.html
-          results-artifact-name: salesforce-code-analyzer-results
-
-      - name: Check the outputs to determine whether to fail
-        if: |
-          steps.run-code-analyzer.outputs.exit-code > 0 ||
-          steps.run-code-analyzer.outputs.num-sev1-violations > 0 ||
-          steps.run-code-analyzer.outputs.num-violations > 0
-        run: exit 1
+      - name: Filter Results
+        run: python ./scripts/filter_results.py
