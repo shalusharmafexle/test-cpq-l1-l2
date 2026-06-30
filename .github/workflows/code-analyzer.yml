@@ -27,7 +27,7 @@ jobs:
 
       # Install Salesforce Code Analyzer plugin
       - name: Install Code Analyzer
-        run: sf plugins install @salesforce/code-analyzer
+        run: sf plugins install "@salesforce/code-analyzer"
 
       # Fetch base branch to compare changes
       - name: Fetch base branch
