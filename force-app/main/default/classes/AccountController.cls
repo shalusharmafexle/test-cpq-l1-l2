@@ -19,4 +19,14 @@ public with sharing class AccountController {
   public static List<Account> getAccounts() {
     return [SELECT Id, Name, AccountNumber, Fax FROM Account ORDER BY createdDate DESC];
   }
+
+  @AuraEnabled(cacheable=true)
+  public static Account getAccountById(Id accountId) {
+    return [
+      SELECT Id, Name, AccountNumber, Type, Rating, Phone, Website, AnnualRevenue, Fax
+      FROM Account
+      WHERE Id = :accountId
+      LIMIT 1
+    ];
+  }
 }
