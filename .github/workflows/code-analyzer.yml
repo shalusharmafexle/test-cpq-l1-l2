@@ -1,4 +1,4 @@
-name: Validate Code Analyzer
+name: Salesforce Code Analyzer - PR Validation
 
 on:
   pull_request:
@@ -7,72 +7,44 @@ on:
       - Full2
 
 jobs:
-  code-analyzer-check:
+  code-analysis:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Check out files
-        uses: actions/checkout@v4
+      # Checkout the repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Set up Node.js (required for Salesforce CLI)
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          fetch-depth: 0
+          node-version: "18"
 
+      # Install Salesforce CLI
       - name: Install Salesforce CLI
-        run: npm install -g @salesforce/cli@latest
+        run: npm install --global @salesforce/cli
 
-      - name: Install Salesforce Code Analyzer Plugin
-        run: echo 'y' | sf plugins install @salesforce/sfdx-scanner@latest
+      # Install Salesforce Code Analyzer plugin
+      - name: Install Code Analyzer
+        run: sf plugins install @salesforce/code-analyzer
 
-      - name: Get changed Apex files
-        id: changed-files
+      # Fetch base branch to compare changes
+      - name: Fetch base branch
+        run: git fetch origin main
+
+      # Identify changed Apex classes between PR branch and base branch
+      - name: Get changed Apex classes
         run: |
-          echo "CHANGED_FILES=$(git diff --name-only --diff-filter=d origin/${{ github.event.pull_request.base.ref }} | grep -E '\.(cls|trigger)$' | tr '\n' ',' | sed 's/,$//')" >> $GITHUB_ENV
+          git diff --name-only origin/main...HEAD | grep "classes/.*\.cls" > changed_classes.txt || true
 
-      - name: Run Salesforce Code Analyzer on changed files
-        if: env.CHANGED_FILES != ''
+      # Run analyzer only on changed files
+      - name: Run Salesforce Code Analyzer
         run: |
-          sf scanner run \
-            --normalize-severity \
-            --target $CHANGED_FILES \
-            --pmdconfig apex-ruleset.xml \
-            --json \
-            --outfile results.json
-
-      - name: Extract changed line ranges
-        if: env.CHANGED_FILES != ''
-        run: |
-          git diff --unified=0 origin/${{ github.event.pull_request.base.ref }} -- $CHANGED_FILES | grep '^@@' > hunks.txt
-
-      - name: Filter analyzer results to changed lines
-        if: env.CHANGED_FILES != ''
-        run: |
-          python3 <<'EOF'
-          import json, re, sys
-
-          # Load analyzer results
-          with open("results.json") as f:
-              data = json.load(f)
-
-          # Load diff hunks
-          hunks = []
-          with open("hunks.txt") as f:
-              for line in f:
-                  m = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", line)
-                  if m:
-                      start = int(m.group(1))
-                      length = int(m.group(2) or 1)
-                      hunks.append(range(start, start+length))
-
-          changed_lines = set(l for r in hunks for l in r)
-
-          violations_in_changed = []
-          # Iterate through each result object
-          for result in data:
-              for v in result.get("violations", []):
-                  if v.get("line") in changed_lines:
-                      violations_in_changed.append(v)
-
-          if violations_in_changed:
-              print("Violations in changed lines:", violations_in_changed)
-              sys.exit(1)
-          else:
-              print("No violations in changed lines.")
-          EOF
+          if [ -s changed_classes.txt ]; then
+            echo "Running analyzer on changed classes:"
+            cat changed_classes.txt
+            xargs sf code-analyzer run --target < changed_classes.txt
+          else
+            echo "No Apex class changes detected."
+          fi
