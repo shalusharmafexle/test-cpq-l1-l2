@@ -1,4 +1,4 @@
-name: Salesforce Code Analyzer - PR Validation
+name: Salesforce Code Analysis (Diff Aware)
 
 on:
   pull_request:
@@ -7,44 +7,108 @@ on:
       - Full2
 
 jobs:
-  code-analysis:
+  analyze:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout the repository
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      # Set up Node.js (required for Salesforce CLI)
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - name: Checkout source
+        uses: actions/checkout@v4
         with:
-          node-version: "18"
+          fetch-depth: 0
 
-      # Install Salesforce CLI
       - name: Install Salesforce CLI
-        run: npm install --global @salesforce/cli
+        run: npm install -g @salesforce/cli
 
-      # Install Salesforce Code Analyzer plugin
       - name: Install Code Analyzer
-        run: sf plugins install "@salesforce/code-analyzer"
+        run: sf plugins install @salesforce/sfdx-scanner
 
-      # Fetch base branch to compare changes
-      - name: Fetch base branch
-        run: git fetch origin Full2
-
-      # Identify changed Apex classes between PR branch and base branch
-      - name: Get changed Apex classes
+      # -------------------------------
+      # 1. Get changed Apex files
+      # -------------------------------
+      - name: Get changed files
+        id: files
         run: |
-          git diff --name-only origin/Full2...HEAD | grep "classes/.*\.cls" > changed_classes.txt || true
+          git fetch origin ${{ github.base_ref }}
 
-      # Run analyzer only on changed files
-      - name: Run Salesforce Code Analyzer
+          git diff --name-only origin/${{ github.base_ref }}...HEAD \
+            | grep -E '\.(cls|trigger)$' || true > changed.txt
+
+          echo "Changed files:"
+          cat changed.txt
+
+      # -------------------------------
+      # 2. Get changed lines (diff)
+      # -------------------------------
+      - name: Get changed line numbers
         run: |
-          if [ -s changed_classes.txt ]; then
-            echo "Running analyzer on changed classes:"
-            cat changed_classes.txt
-            xargs sf code-analyzer run --target < changed_classes.txt
-          else
-            echo "No Apex class changes detected."
-          fi
+          git diff -U0 origin/${{ github.base_ref }}...HEAD \
+            | grep -E "^\+[^+]" > diff.txt || true
+
+          echo "Changed lines captured"
+
+      # -------------------------------
+      # 3. Run Code Analyzer
+      # -------------------------------
+      - name: Run Code Analyzer
+        if: success()
+        run: |
+          sf code-analyzer run \
+            --target force-app \
+            --format sarif \
+            --outfile report.sarif
+
+      # -------------------------------
+      # 4. Validate only changed lines
+      # -------------------------------
+      - name: Fail if violations on changed lines
+        run: |
+          node << 'EOF'
+          const fs = require("fs");
+
+          const sarif = JSON.parse(fs.readFileSync("report.sarif", "utf8"));
+          const diff = fs.readFileSync("diff.txt", "utf8");
+
+          // Extract changed line numbers per file
+          const changedLines = {};
+
+          diff.split("\n").forEach(line => {
+            const match = line.match(/^\+(\d+)/);
+            if (match) {
+              const lineNum = parseInt(match[1], 10);
+              // NOTE: simplified mapping (can be enhanced per file)
+              changedLines[lineNum] = true;
+            }
+          });
+
+          let failed = false;
+
+          for (const run of sarif.runs || []) {
+            for (const result of run.results || []) {
+              const loc = result.locations?.[0]?.physicalLocation;
+              if (!loc) continue;
+
+              const line = loc.region?.startLine;
+
+              if (changedLines[line]) {
+                console.log("❌ Issue on changed line:", result.message.text, "Line:", line);
+                failed = true;
+              }
+            }
+          }
+
+          if (failed) {
+            console.error("\nPR failed: Issues found in modified lines only.");
+            process.exit(1);
+          } else {
+            console.log("\n✅ No issues found in modified lines.");
+          }
+          EOF
+
+      # -------------------------------
+      # 5. Upload SARIF
+      # -------------------------------
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: report.sarif
