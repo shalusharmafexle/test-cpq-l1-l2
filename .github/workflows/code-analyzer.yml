@@ -16,6 +16,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Debug workspace (safe remove later)
+        run: ls -R
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -29,12 +32,12 @@ jobs:
       - name: Install Salesforce CLI
         run: npm install -g @salesforce/cli
 
-      # ✅ FIXED STEP
       - name: Install Code Analyzer Plugin
         run: sf plugins install code-analyzer --force
 
+      # ✅ FIXED PATH HERE
       - name: Generate changed lines
-        run: python scripts/get_changed_lines.py
+        run: python ./scripts/get_changed_lines.py
 
       - name: Run Salesforce Code Analyzer
         run: |
@@ -43,5 +46,5 @@ jobs:
             --output-format json \
             --output-file results.json
 
-      - name: Filter Results (only changed lines)
-        run: python scripts/filter_results.py
+      - name: Filter Results
+        run: python ./scripts/filter_results.py

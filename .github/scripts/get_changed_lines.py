@@ -1,18 +1,17 @@
 import subprocess
 import re
 import json
+import os
 import sys
 
 BASE_BRANCH = "origin/main"
 
-try:
-    diff = subprocess.check_output(
-        ["git", "diff", f"{BASE_BRANCH}...HEAD", "--unified=0"],
-        text=True
-    )
-except subprocess.CalledProcessError as e:
-    print(f"Error running git diff: {e}")
-    sys.exit(1)
+print("Running git diff...")
+
+diff = subprocess.check_output(
+    ["git", "diff", f"{BASE_BRANCH}...HEAD", "--unified=0"],
+    text=True
+)
 
 changed_lines = {}
 
@@ -23,7 +22,6 @@ for line in diff.splitlines():
     if line.startswith("+++ b/"):
         current_file = line[6:]
 
-        # Only Apex files
         if current_file.endswith(".cls") or current_file.endswith(".trigger"):
             changed_lines[current_file] = set()
         else:
@@ -40,7 +38,6 @@ for line in diff.splitlines():
             for i in range(start, start + count):
                 changed_lines[current_file].add(i)
 
-# Convert sets to sorted lists
 output = {
     file: sorted(list(lines))
     for file, lines in changed_lines.items()
